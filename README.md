@@ -23,12 +23,13 @@ Hesap, lisans, güncelleme bildirimi veya telemetri yoktur. Kayıtlı bağlantı
 - Oturum araç çubuğu: tam ekran (Ctrl+Alt+Enter), pencereye sığdır / gerçek boyut, Ctrl+Alt+Del, sadece izle
 - RFB 3.3 / 3.7 / 3.8 el sıkışması
 - Güvenlik: None ve VNC Authentication (TightVNC'nin varsayılan şifresi)
-- Kodlamalar: Raw, CopyRect, DesktopSize (çözünürlük değişimi)
+- Kodlamalar: Tight (zlib + JPEG, TightVNC'nin hızlı kodlaması), CopyRect, Raw, DesktopSize (çözünürlük değişimi)
 - Fare (sol/orta/sağ tık, tekerlek), klavye (harfler, Ctrl/Alt/Shift, ok tuşları, F1–F12)
 
 ## Sıradakiler
 
-- Tight ve ZRLE kodlamaları (yavaş ağlarda büyük hız farkı)
+- ZRLE kodlaması (RealVNC / TigerVNC sunucuları için)
+- Görüntü kalitesi ayarı (JPEG kalitesi şu an 7/9 sabit)
 - Pano (clipboard) paylaşımı
 - Kayıtlı şifreleri işletim sisteminin anahtar deposunda saklamak
 

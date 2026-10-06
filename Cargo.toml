@@ -7,4 +7,6 @@ edition = "2024"
 anyhow = "1"
 des = "0.8"
 eframe = { version = "0.32", features = ["persistence"] }
+flate2 = "1"
+jpeg-decoder = { version = "0.3", default-features = false }
 serde = { version = "1", features = ["derive"] }
