@@ -6,4 +6,5 @@ edition = "2024"
 [dependencies]
 anyhow = "1"
 des = "0.8"
-eframe = "0.32"
+eframe = { version = "0.32", features = ["persistence"] }
+serde = { version = "1", features = ["derive"] }

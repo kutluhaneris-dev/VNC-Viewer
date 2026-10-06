@@ -4,8 +4,9 @@
 //! security, and the Raw + CopyRect encodings (plus DesktopSize).
 
 use std::io::{Read, Write};
-use std::net::TcpStream;
+use std::net::{Shutdown, TcpStream, ToSocketAddrs};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
 use des::cipher::{BlockEncrypt, KeyInit, generic_array::GenericArray};
@@ -13,6 +14,26 @@ use des::cipher::{BlockEncrypt, KeyInit, generic_array::GenericArray};
 const ENC_RAW: i32 = 0;
 const ENC_COPYRECT: i32 = 1;
 const ENC_DESKTOP_SIZE: i32 = -223;
+
+/// Authentication outcome the UI reacts to (by asking for a password).
+#[derive(Debug)]
+pub enum AuthError {
+    /// The server needs a password and none was given.
+    PasswordRequired,
+    /// The server rejected the password.
+    Rejected(String),
+}
+
+impl std::fmt::Display for AuthError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            AuthError::PasswordRequired => write!(f, "password required"),
+            AuthError::Rejected(reason) => write!(f, "{reason}"),
+        }
+    }
+}
+
+impl std::error::Error for AuthError {}
 
 /// Framebuffer shared between the network thread and the UI, stored as RGBA.
 pub struct Framebuffer {
@@ -46,6 +67,13 @@ impl Sender {
     fn send(&self, buf: &[u8]) {
         if let Ok(mut s) = self.stream.lock() {
             let _ = s.write_all(buf);
+        }
+    }
+
+    /// Closes the connection; the reader thread then ends with an error.
+    pub fn shutdown(&self) {
+        if let Ok(s) = self.stream.lock() {
+            let _ = s.shutdown(Shutdown::Both);
         }
     }
 
@@ -120,9 +148,16 @@ fn vnc_auth_response(password: &str, challenge: &[u8; 16]) -> [u8; 16] {
 
 impl Connection {
     pub fn connect(addr: &str, password: &str) -> Result<Self> {
-        let mut s =
-            TcpStream::connect(addr).with_context(|| format!("cannot connect to {addr}"))?;
+        let sock = addr
+            .to_socket_addrs()
+            .with_context(|| format!("cannot resolve {addr}"))?
+            .next()
+            .with_context(|| format!("cannot resolve {addr}"))?;
+        let mut s = TcpStream::connect_timeout(&sock, Duration::from_secs(10))
+            .with_context(|| format!("cannot connect to {addr}"))?;
         s.set_nodelay(true)?;
+        // Generous timeout for the handshake only; cleared once connected.
+        s.set_read_timeout(Some(Duration::from_secs(15)))?;
 
         // ProtocolVersion handshake.
         let ver = read_vec(&mut s, 12)?;
@@ -150,7 +185,7 @@ impl Connection {
             } else if types.contains(&1) {
                 1
             } else if types.contains(&2) {
-                2
+                bail!(AuthError::PasswordRequired);
             } else {
                 bail!("no supported security type (server offers {types:?})");
             };
@@ -165,6 +200,9 @@ impl Connection {
         };
 
         if sec_type == 2 {
+            if password.is_empty() {
+                bail!(AuthError::PasswordRequired);
+            }
             let mut challenge = [0u8; 16];
             s.read_exact(&mut challenge)?;
             s.write_all(&vnc_auth_response(password, &challenge))?;
@@ -176,7 +214,7 @@ impl Connection {
                 } else {
                     "authentication failed".into()
                 };
-                bail!("{reason}");
+                bail!(AuthError::Rejected(reason));
             }
         }
 
@@ -201,6 +239,7 @@ impl Connection {
         }
         s.write_all(&pf)?;
 
+        s.set_read_timeout(None)?;
         let reader = s.try_clone()?;
         let sender = Sender {
             stream: Arc::new(Mutex::new(s)),
