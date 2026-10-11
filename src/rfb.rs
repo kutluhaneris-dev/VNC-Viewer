@@ -1,7 +1,8 @@
 //! Minimal RFB (VNC) client protocol, RFC 6143.
 //!
 //! Supports protocol 3.3 / 3.7 / 3.8, "None" and "VNC Authentication"
-//! security, and the Raw + CopyRect encodings (plus DesktopSize).
+//! security, and the Tight, CopyRect and Raw encodings (plus DesktopSize
+//! and LastRect).
 
 use std::io::{Read, Write};
 use std::net::{Shutdown, TcpStream, ToSocketAddrs};
@@ -9,11 +10,18 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
+
+use crate::tight::TightDecoder;
 use des::cipher::{BlockEncrypt, KeyInit, generic_array::GenericArray};
 
 const ENC_RAW: i32 = 0;
 const ENC_COPYRECT: i32 = 1;
+const ENC_TIGHT: i32 = 7;
 const ENC_DESKTOP_SIZE: i32 = -223;
+const ENC_LAST_RECT: i32 = -224;
+/// Pseudo-encodings asking Tight servers for JPEG quality 7 (of 9) and zlib level 6.
+const ENC_JPEG_QUALITY_7: i32 = -32 + 7;
+const ENC_COMPRESS_LEVEL_6: i32 = -256 + 6;
 
 /// Authentication outcome the UI reacts to (by asking for a password).
 #[derive(Debug)]
@@ -104,6 +112,7 @@ pub struct Connection {
     pub fb: Arc<Mutex<Framebuffer>>,
     pub sender: Sender,
     reader: TcpStream,
+    tight: TightDecoder,
 }
 
 fn read_u8(s: &mut impl Read) -> Result<u8> {
@@ -231,7 +240,16 @@ impl Connection {
             0, 0, 0, 0, 32, 24, 0, 1, 0, 255, 0, 255, 0, 255, 16, 8, 0, 0, 0, 0,
         ];
         // SetEncodings.
-        let encodings = [ENC_COPYRECT, ENC_RAW, ENC_DESKTOP_SIZE];
+        // In order of preference.
+        let encodings = [
+            ENC_TIGHT,
+            ENC_COPYRECT,
+            ENC_RAW,
+            ENC_DESKTOP_SIZE,
+            ENC_LAST_RECT,
+            ENC_JPEG_QUALITY_7,
+            ENC_COMPRESS_LEVEL_6,
+        ];
         pf.extend_from_slice(&[2, 0]);
         pf.extend_from_slice(&(encodings.len() as u16).to_be_bytes());
         for e in encodings {
@@ -250,12 +268,13 @@ impl Connection {
             fb: Arc::new(Mutex::new(Framebuffer::new(width, height, name))),
             sender,
             reader,
+            tight: TightDecoder::default(),
         })
     }
 
     /// Reads server messages until the connection closes. Run on its own thread.
     pub fn run(mut self, on_update: impl Fn()) -> Result<()> {
-        let s = &mut self.reader;
+        let s = &mut std::io::BufReader::with_capacity(1 << 16, &self.reader);
         loop {
             match read_u8(s)? {
                 0 => {
@@ -280,6 +299,11 @@ impl Connection {
                                 let mut fb = self.fb.lock().unwrap();
                                 copy_rect(&mut fb, sx, sy, x, y, w, h);
                             }
+                            ENC_TIGHT => {
+                                let mut fb = self.fb.lock().unwrap();
+                                self.tight.decode(s, &mut fb, x, y, w, h)?;
+                            }
+                            ENC_LAST_RECT => break,
                             ENC_DESKTOP_SIZE => {
                                 let mut fb = self.fb.lock().unwrap();
                                 let name = std::mem::take(&mut fb.name);

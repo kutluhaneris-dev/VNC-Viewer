@@ -4,6 +4,8 @@
 #[allow(dead_code)]
 #[path = "../src/rfb.rs"]
 mod rfb;
+#[path = "../src/tight.rs"]
+mod tight;
 
 use std::sync::mpsc::channel;
 

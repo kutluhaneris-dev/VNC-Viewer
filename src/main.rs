@@ -5,6 +5,7 @@ mod app;
 mod keys;
 mod rfb;
 mod store;
+mod tight;
 
 use eframe::egui;
 
