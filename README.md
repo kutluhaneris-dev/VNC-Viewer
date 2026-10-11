@@ -2,7 +2,13 @@
 
 Rust + [egui](https://github.com/emilk/egui) ile yazılmış, TightVNC sunucularıyla uyumlu hafif bir VNC istemcisi.
 
-## Çalıştırma
+## İndirme (Windows)
+
+En son sürüm her zaman [Releases](https://github.com/kutluhaneris-dev/VNC-Viewer/releases/latest) sayfasındadır:
+**Assets** altındaki `VNC-Viewer.exe` dosyasını indirip çift tıklayın, kurulum gerekmez.
+`main`'e her birleştirmede yeni sürüm otomatik oluşturulur.
+
+## Kaynaktan çalıştırma
 
 ```sh
 cargo run --release                     # bağlantı ekranı açılır

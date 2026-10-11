@@ -1,0 +1,41 @@
+name: Windows build
+
+# Every push to main builds VNC-Viewer.exe and publishes it as a new release,
+# so the latest version is always on the repo's Releases page.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Test
+        run: cargo test --release
+      - name: Build
+        run: |
+          cargo build --release
+          Copy-Item target/release/vnc-viewer.exe VNC-Viewer.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: VNC-Viewer
+          path: VNC-Viewer.exe
+      - name: Publish release
+        if: github.event_name != 'pull_request'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v0.1.${{ github.run_number }}
+          name: VNC Viewer 0.1.${{ github.run_number }}
+          target_commitish: ${{ github.sha }}
+          make_latest: true
+          body: |
+            İndir: **VNC-Viewer.exe** (aşağıdaki Assets bölümünde). Kurulum gerektirmez, çift tıklayıp çalıştırın.
+            Windows "bilgisayarınız korundu" uyarısı verirse: Ek bilgi → Yine de çalıştır.
+          files: VNC-Viewer.exe
